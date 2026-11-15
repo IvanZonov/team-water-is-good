@@ -1,0 +1,1146 @@
+openapi: 3.0.3
+
+info:
+  title: NVKDrive API
+  version: 1.0.0
+  description: |
+    HTTP API учебного сервиса поиска совместных поездок и бронирования мест.
+
+servers:
+  - url: /api/v1
+
+tags:
+  - name: Authentication
+  - name: Locations
+  - name: Trips
+  - name: Jobs
+  - name: Bookings
+
+paths:
+  /auth/register:
+    post:
+      tags: [Authentication]
+      operationId: register
+      summary: Зарегистрировать пользователя
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Пользователь зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          description: Логин уже занят
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                code: LOGIN_ALREADY_EXISTS
+                message: A user with this login already exists
+                field: login
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      summary: Войти в систему
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Вход выполнен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                code: INVALID_CREDENTIALS
+                message: Invalid login or password
+                field: null
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /locations:
+    get:
+      tags: [Locations]
+      operationId: searchLocations
+      summary: Найти локации через API Яндекс Карт
+      parameters:
+        - name: query
+          in: query
+          required: true
+          description: Поисковая строка
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 200
+        - name: limit
+          in: query
+          required: false
+          description: Максимальное количество результатов
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 10
+      responses:
+        "200":
+          description: Найденные локации
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 20
+                items:
+                  $ref: "#/components/schemas/Location"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/LocationProviderUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /trips:
+    post:
+      tags: [Trips]
+      operationId: createTrip
+      summary: Создать поездку
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTripRequest"
+      responses:
+        "201":
+          description: Поездка создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trip"
+        "400":
+          description: Некорректные параметры поездки
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                sameLocations:
+                  value:
+                    code: SAME_LOCATIONS
+                    message: Origin and destination must be different
+                    field: destination
+                timeRequired:
+                  value:
+                    code: TIME_REQUIRED
+                    message: Departure time or arrival time is required
+                    field: departureTime
+                invalidSeatCount:
+                  value:
+                    code: INVALID_SEAT_COUNT
+                    message: Seat count must be greater than zero
+                    field: seatCount
+                invalidPrice:
+                  value:
+                    code: INVALID_PRICE
+                    message: Price must not be negative
+                    field: price
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "502":
+          $ref: "#/components/responses/LocationProviderUnavailable"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    get:
+      tags: [Trips]
+      operationId: listTrips
+      summary: Получить активные поездки
+      parameters:
+        - name: originId
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+        - name: destinationId
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+        - name: departureFrom
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: departureTo
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Список активных поездок
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TripList"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /trips/{tripId}:
+    get:
+      tags: [Trips]
+      operationId: getTrip
+      summary: Получить поездку
+      parameters:
+        - $ref: "#/components/parameters/TripId"
+      responses:
+        "200":
+          description: Данные поездки
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Trip"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TripNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /trips/{tripId}/complete:
+    post:
+      tags: [Trips]
+      operationId: completeTrip
+      summary: Завершить поездку вручную
+      parameters:
+        - $ref: "#/components/parameters/TripId"
+      responses:
+        "200":
+          description: Поездка завершена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TripCompletionResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/TripNotFound"
+        "409":
+          description: Поездку нельзя завершить в текущем состоянии
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                code: INVALID_TRIP_STATE
+                message: The trip is already completed or cancelled
+                field: tripId
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /trips/{tripId}/cancel:
+    post:
+      tags: [Trips]
+      operationId: cancelTrip
+      summary: Отменить поездку
+      parameters:
+        - $ref: "#/components/parameters/TripId"
+      responses:
+        "200":
+          description: Поездка и её активные бронирования отменены
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TripCancellationResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/TripNotFound"
+        "409":
+          description: Поездку нельзя отменить в текущем состоянии
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                code: INVALID_TRIP_STATE
+                message: The trip is already completed or cancelled
+                field: tripId
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /jobs:
+    post:
+      tags: [Jobs]
+      operationId: createBookingJob
+      summary: Создать Job бронирования
+      description: |
+        Создаёт BookingJob и синхронно выполняет бронирование.
+
+        Сочетание идентификатора пользователя и `Idempotency-Key` уникально.
+        Повтор с теми же ключом и телом возвращает существующий Job.
+        Повтор ключа с другим телом возвращает `409 IDEMPOTENCY_KEY_REUSED`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBookingJobRequest"
+      responses:
+        "201":
+          description: Создан и обработан новый Job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingJob"
+        "200":
+          description: Возвращён ранее созданный Job для того же идемпотентного запроса
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingJob"
+        "400":
+          description: Некорректная операция или параметры
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalidOperation:
+                  value:
+                    code: INVALID_OPERATION
+                    message: The requested operation is not supported
+                    field: operation
+                invalidSeatCount:
+                  value:
+                    code: INVALID_SEAT_COUNT
+                    message: Seat count must be greater than zero
+                    field: seatCount
+                bookingForOthersRequired:
+                  value:
+                    code: BOOKING_FOR_OTHERS_REQUIRED
+                    message: Booking for others must be set when reserving multiple seats
+                    field: bookingForOthers
+                validationError:
+                  value:
+                    code: VALIDATION_ERROR
+                    message: The request contains an invalid value
+                    field: tripId
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TripNotFound"
+        "409":
+          description: Бизнес-конфликт или повторное использование ключа
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                insufficientSeats:
+                  value:
+                    code: INSUFFICIENT_SEATS
+                    message: The trip does not have enough available seats
+                    field: seatCount
+                selfBooking:
+                  value:
+                    code: SELF_BOOKING
+                    message: The driver cannot book their own trip
+                    field: tripId
+                inactiveTrip:
+                  value:
+                    code: TRIP_NOT_ACTIVE
+                    message: The trip is completed or cancelled
+                    field: tripId
+                idempotencyKeyReused:
+                  value:
+                    code: IDEMPOTENCY_KEY_REUSED
+                    message: The idempotency key was used with another request
+                    field: Idempotency-Key
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /jobs/{jobId}:
+    get:
+      tags: [Jobs]
+      operationId: getBookingJob
+      summary: Получить состояние и результат Job
+      description: |
+        Если Job находится в `Processing`, но его lease истёк, система
+        атомарно переводит его в `Failed` с ошибкой `PROCESSING_INTERRUPTED`.
+        Для чужого и несуществующего Job возвращается одинаковый ответ 404.
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: Состояние и результат Job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Job не существует или принадлежит другому пользователю
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                code: JOB_NOT_FOUND
+                message: Job was not found
+                field: jobId
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /jobs/{jobId}/cancel:
+    post:
+      tags: [Jobs]
+      operationId: cancelBookingJob
+      summary: Попытаться отменить выполняющийся Job
+      description: |
+        Отмена Job в состоянии Processing не поддерживается.
+        После создания брони следует использовать операцию отмены бронирования.
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "409":
+          description: Job нельзя отменить в текущем состоянии
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                processing:
+                  value:
+                    code: JOB_ALREADY_PROCESSING
+                    message: A processing Job cannot be cancelled
+                    field: jobId
+                terminal:
+                  value:
+                    code: JOB_ALREADY_TERMINAL
+                    message: The Job has already reached a terminal state
+                    field: jobId
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Job не существует или принадлежит другому пользователю
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                code: JOB_NOT_FOUND
+                message: Job was not found
+                field: jobId
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /bookings:
+    get:
+      tags: [Bookings]
+      operationId: listOwnBookings
+      summary: Получить бронирования текущего пользователя
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/BookingStatus"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Бронирования текущего пользователя
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingList"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /bookings/{bookingId}/cancel:
+    post:
+      tags: [Bookings]
+      operationId: cancelBooking
+      summary: Отменить отдельную бронь
+      description: |
+        Пассажир может отменить собственную бронь.
+        Водитель может отменить бронь в принадлежащей ему поездке.
+      parameters:
+        - $ref: "#/components/parameters/BookingId"
+      responses:
+        "200":
+          description: Бронь отменена, места освобождены
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Бронь не найдена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                code: BOOKING_NOT_FOUND
+                message: Booking was not found
+                field: bookingId
+        "409":
+          description: Бронь уже завершена или отменена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                code: INVALID_BOOKING_STATE
+                message: The booking is already completed or cancelled
+                field: bookingId
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Уникальный ключ пользовательской операции. Повтор того же запроса
+        с тем же ключом возвращает ранее созданный Job.
+      schema:
+        type: string
+        format: uuid
+
+    TripId:
+      name: tripId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    ValidationError:
+      description: Запрос содержит некорректное поле
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: VALIDATION_ERROR
+            message: The request contains an invalid value
+            field: query
+
+    Unauthorized:
+      description: Аутентификация отсутствует или недействительна
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: UNAUTHORIZED
+            message: Authentication is required
+            field: null
+
+    Forbidden:
+      description: Пользователь не имеет права выполнить операцию
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: FORBIDDEN
+            message: The operation is not allowed for this user
+            field: null
+
+    TripNotFound:
+      description: Поездка не найдена
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: TRIP_NOT_FOUND
+            message: Trip was not found
+            field: tripId
+
+    PayloadTooLarge:
+      description: Тело запроса превышает допустимый размер
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: PAYLOAD_TOO_LARGE
+            message: The request body is too large
+            field: null
+
+    LocationProviderUnavailable:
+      description: Провайдер локаций недоступен или вернул некорректный ответ
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: LOCATION_PROVIDER_UNAVAILABLE
+            message: The location provider is temporarily unavailable
+            field: null
+
+    InternalError:
+      description: Непредвиденная внутренняя ошибка
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: INTERNAL_ERROR
+            message: An unexpected internal error occurred
+            field: null
+
+  schemas:
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - login
+        - password
+      properties:
+        login:
+          type: string
+          minLength: 3
+          maxLength: 50
+          pattern: "^[A-Za-z0-9._-]+$"
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          format: password
+
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - login
+        - password
+      properties:
+        login:
+          type: string
+          minLength: 3
+          maxLength: 50
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          format: password
+
+    AuthResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - userId
+        - accessToken
+        - expiresAt
+      properties:
+        userId:
+          type: string
+          format: uuid
+        accessToken:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    Location:
+      type: object
+      additionalProperties: false
+      required:
+        - providerId
+        - name
+        - latitude
+        - longitude
+      properties:
+        providerId:
+          type: string
+          minLength: 1
+          maxLength: 200
+        name:
+          type: string
+          minLength: 1
+          maxLength: 500
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+
+    CreateTripRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Должно быть указано хотя бы одно из полей departureTime и arrivalTime.
+        origin.providerId и destination.providerId должны различаться.
+      required:
+        - origin
+        - destination
+        - seatCount
+        - price
+      properties:
+        origin:
+          $ref: "#/components/schemas/Location"
+        destination:
+          $ref: "#/components/schemas/Location"
+        seatCount:
+          type: integer
+          minimum: 1
+          maximum: 20
+        price:
+          type: number
+          format: decimal
+          minimum: 0
+          maximum: 1000000
+        departureTime:
+          type: string
+          format: date-time
+          nullable: true
+        arrivalTime:
+          type: string
+          format: date-time
+          nullable: true
+
+    TripStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - COMPLETED
+        - CANCELLED
+
+    Trip:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - driverId
+        - origin
+        - destination
+        - totalSeats
+        - remainingSeats
+        - price
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        driverId:
+          type: string
+          format: uuid
+        origin:
+          $ref: "#/components/schemas/Location"
+        destination:
+          $ref: "#/components/schemas/Location"
+        totalSeats:
+          type: integer
+          minimum: 1
+        remainingSeats:
+          type: integer
+          minimum: 0
+        price:
+          type: number
+          format: decimal
+          minimum: 0
+        departureTime:
+          type: string
+          format: date-time
+          nullable: true
+        arrivalTime:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          $ref: "#/components/schemas/TripStatus"
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        cancelledAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    TripList:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - limit
+        - offset
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Trip"
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    TripCompletionResult:
+      type: object
+      additionalProperties: false
+      required:
+        - tripId
+        - status
+        - completedAt
+        - completedBookingsCount
+      properties:
+        tripId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [COMPLETED]
+        completedAt:
+          type: string
+          format: date-time
+        completedBookingsCount:
+          type: integer
+          minimum: 0
+
+    TripCancellationResult:
+      type: object
+      additionalProperties: false
+      required:
+        - tripId
+        - status
+        - cancelledAt
+        - cancelledBookingsCount
+      properties:
+        tripId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [CANCELLED]
+        cancelledAt:
+          type: string
+          format: date-time
+        cancelledBookingsCount:
+          type: integer
+          minimum: 0
+
+    CreateBookingJobRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - operation
+        - tripId
+        - seatCount
+        - bookingForOthers
+      properties:
+        operation:
+          type: string
+          enum:
+            - CREATE_BOOKING
+        tripId:
+          type: string
+          format: uuid
+        seatCount:
+          type: integer
+          minimum: 1
+          maximum: 20
+        bookingForOthers:
+          type: boolean
+          description: Должно быть true, если seatCount больше одного.
+
+    JobStatus:
+      type: string
+      enum:
+        - CREATED
+        - PROCESSING
+        - CONFIRMED
+        - FAILED
+        - COMPLETED
+        - CANCELLED_BY_PASSENGER
+        - CANCELLED_BY_DRIVER
+        - CANCELLED_BECAUSE_TRIP_CANCELLED
+
+    BookingJob:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - operation
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        operation:
+          type: string
+          enum:
+            - CREATE_BOOKING
+        status:
+          $ref: "#/components/schemas/JobStatus"
+        booking:
+          allOf:
+            - $ref: "#/components/schemas/Booking"
+          nullable: true
+        error:
+          allOf:
+            - $ref: "#/components/schemas/JobError"
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    BookingStatus:
+      type: string
+      enum:
+        - CONFIRMED
+        - COMPLETED
+        - CANCELLED_BY_PASSENGER
+        - CANCELLED_BY_DRIVER
+        - CANCELLED_BECAUSE_TRIP_CANCELLED
+
+    Booking:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - jobId
+        - tripId
+        - passengerId
+        - seatCount
+        - bookingForOthers
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        jobId:
+          type: string
+          format: uuid
+        tripId:
+          type: string
+          format: uuid
+        passengerId:
+          type: string
+          format: uuid
+        seatCount:
+          type: integer
+          minimum: 1
+        bookingForOthers:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/BookingStatus"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    BookingList:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - limit
+        - offset
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Booking"
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    JobError:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+      properties:
+        code:
+          $ref: "#/components/schemas/ErrorCode"
+        message:
+          type: string
+        field:
+          type: string
+          nullable: true
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+      properties:
+        code:
+          $ref: "#/components/schemas/ErrorCode"
+        message:
+          type: string
+        field:
+          type: string
+          nullable: true
+
+    ErrorCode:
+      type: string
+      enum:
+        - VALIDATION_ERROR
+        - INVALID_OPERATION
+        - INVALID_CREDENTIALS
+        - UNAUTHORIZED
+        - FORBIDDEN
+        - LOGIN_ALREADY_EXISTS
+        - TRIP_NOT_FOUND
+        - BOOKING_NOT_FOUND
+        - JOB_NOT_FOUND
+        - SAME_LOCATIONS
+        - TIME_REQUIRED
+        - INVALID_SEAT_COUNT
+        - INVALID_PRICE
+        - BOOKING_FOR_OTHERS_REQUIRED
+        - SELF_BOOKING
+        - INSUFFICIENT_SEATS
+        - TRIP_NOT_ACTIVE
+        - INVALID_TRIP_STATE
+        - INVALID_BOOKING_STATE
+        - INVALID_JOB_TRANSITION
+        - JOB_ALREADY_PROCESSING
+        - JOB_ALREADY_TERMINAL
+        - JOB_LEASE_EXPIRED
+        - PROCESSING_INTERRUPTED
+        - IDEMPOTENCY_KEY_REUSED
+        - PAYLOAD_TOO_LARGE
+        - LOCATION_PROVIDER_UNAVAILABLE
+        - INTERNAL_ERROR
+
+security:
+  - bearerAuth: []
